@@ -582,6 +582,8 @@ class AgentActivity(RecognitionHooks):
             hooks=self,
             stt=self._agent.stt_node if self.stt else None,
             vad=self.vad,
+            #passing interrupt_ignore_words setting from AgentSession's options to the AudioRecognition constructor
+            interrupt_ignore_words=self._session.options.interrupt_ignore_words,
             min_endpointing_delay=self.min_endpointing_delay,
             max_endpointing_delay=self.max_endpointing_delay,
             turn_detection=self._turn_detection,

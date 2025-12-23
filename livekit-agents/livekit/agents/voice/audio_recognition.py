@@ -4,7 +4,7 @@ import asyncio
 import json
 import math
 import time
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Sequence 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional, Protocol, Union, cast
 
@@ -101,6 +101,9 @@ class AudioRecognition:
         stt: io.STTNode | None,
         vad: vad.VAD | None,
         turn_detection: TurnDetectionMode | None,
+        #updating the constructor to accept interrupt_ignore_words parameter and store it
+        #as a member variable 
+        interrupt_ignore_words: Sequence[str] | None,
         min_endpointing_delay: float,
         max_endpointing_delay: float,
     ) -> None:
@@ -119,6 +122,8 @@ class AudioRecognition:
         self._turn_detection_mode = turn_detection if isinstance(turn_detection, str) else None
         self._vad_base_turn_detection = self._turn_detection_mode in ("vad", None)
         self._user_turn_committed = False  # true if user turn ended but EOU task not done
+        #storing the interrupt_ignore_words parameter 
+        self._interrupt_ignore_words = interrupt_ignore_words 
 
         self._sample_rate: int | None = None
         self._speaking = False
@@ -344,6 +349,14 @@ class AudioRecognition:
             return
 
         if ev.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+
+            #adding the core logic of ignoring interrupt words 
+            if self._session.agent_state in ("speaking", "thinking") and self._interrupt_ignore_words:
+                transcript_text = ev.alternatives[0].text.strip().lower()
+                if transcript_text in self._interrupt_ignore_words:
+                    logger.debug("ignoring user interruption: '%s'", transcript_text)
+                    return 
+            
             transcript = ev.alternatives[0].text
             language = ev.alternatives[0].language
             confidence = ev.alternatives[0].confidence
@@ -402,6 +415,12 @@ class AudioRecognition:
                     self._run_eou_detection(chat_ctx)
 
         elif ev.type == stt.SpeechEventType.PREFLIGHT_TRANSCRIPT:
+            #modifying to include the same filtering logic at the beginning 
+            if self._session.agent_state in ("speaking", "thinking") and self._interrupt_ignore_words:
+                transcript_text = ev.alternatives[0].text.strip().lower()
+                if transcript_text in self._interrupt_ignore_words:
+                    logger.debug("ignoring user interruption: '%s'", transcript_text)
+                    return 
             self._hooks.on_interim_transcript(ev, speaking=self._speaking if self._vad else None)
             transcript = ev.alternatives[0].text
             language = ev.alternatives[0].language
